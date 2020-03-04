@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="176px" height="128px" viewBox="0 0 176 128" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 52.6 (67491) - http://www.bohemiancoding.com/sketch -->
+    <title>未命名 2</title>
+    <desc>Created with Sketch.</desc>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="edu">
+            <path d="M0.125,11.625 L0.125,116.375 C0.125,122.59 5.159,127.625 11.375,127.625 L164.625,127.625 C170.84,127.625 175.875,122.59 175.875,116.375 L175.875,11.625 C175.875,5.41 170.84,0.375 164.625,0.375 L11.375,0.375 C5.159,0.375 0.125,5.41 0.125,11.625 Z" id="路径" fill="#555555"></path>
+            <rect id="矩形" fill="#FFFFFF" x="12" y="11.5" width="152.5" height="105.5"></rect>
+        </g>
+    </g>
+</svg>
