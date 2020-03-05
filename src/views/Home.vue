@@ -3,11 +3,17 @@
         <div class="common-container container">
             <video id="localVideo" autoplay playsinline></video>
             <video id="remoteVideo" autoplay playsinline></video>
+            截图预览：
+            <canvas id="photo"></canvas>
 
             <div>
                 <button id="startButton" @click="start">Start</button>
                 <button id="callButton" @click="call">Call</button>
                 <button id="hangupButton" @click="hangUp">Hang Up</button>
+
+                <ui-raised-button class="btn" label="截图" @click="snap" />
+                <ui-raised-button class="btn" label="测试发送数据" @click="sendData" />
+                <ui-raised-button class="btn" label="调试" @click="debug" />
             </div>
             
             <div class="btns">
@@ -54,12 +60,91 @@ export default {
     },
     methods: {
         init() {
+            this.start()
+            this.initWebSocket()
+        },
+        debug() {
+        },
+        initWebSocket() {
+            var socket = io.connect('http://127.0.0.1:8099');
 
+            socket.on('ipaddr', function(ipaddr) {
+                console.log('Server IP address is: ' + ipaddr);
+            // updateRoomURL(ipaddr);
+            });
 
+            socket.on('created', function(room, clientId) {
+            console.log('Created room', room, '- my client ID is', clientId);
+            isInitiator = true;
+            grabWebCamVideo();
+            });
+
+            socket.on('joined', function(room, clientId) {
+            console.log('This peer has joined room', room, 'with client ID', clientId);
+            isInitiator = false;
+            createPeerConnection(isInitiator, configuration);
+            grabWebCamVideo();
+            });
+
+            socket.on('full', function(room) {
+            alert('Room ' + room + ' is full. We will create a new room for you.');
+            window.location.hash = '';
+            window.location.reload();
+            });
+
+            socket.on('ready', function() {
+            console.log('Socket is ready');
+            createPeerConnection(isInitiator, configuration);
+            });
+
+            socket.on('log', function(array) {
+            console.log.apply(console, array);
+            });
+
+            socket.on('message', function(message) {
+            console.log('Client received message:', message);
+            signalingMessageCallback(message);
+            });
+
+            // Joining a room.
+            // socket.emit('create or join', room);
+
+            // if (location.hostname.match(/localhost|127\.0\.0/)) {
+            // socket.emit('ipaddr');
+            // }
+
+            // Leaving rooms and disconnecting from peers.
+            socket.on('disconnect', function(reason) {
+            console.log(`Disconnected: ${reason}.`);
+            sendBtn.disabled = true;
+            snapAndSendBtn.disabled = true;
+            });
+
+            socket.on('bye', function(room) {
+            console.log(`Peer leaving room ${room}.`);
+            sendBtn.disabled = true;
+            snapAndSendBtn.disabled = true;
+            // If peer did not create the room, re-enter to be creator.
+            if (!isInitiator) {
+                window.location.reload();
+            }
+            });
+        },
+        snap() {
+            var photo = document.getElementById('photo');
+            var photoContext = photo.getContext('2d');
+            photoContext.drawImage(this.localVideo, 0, 0, photo.width, photo.height)
+            function show() {
+                Array.prototype.forEach.call(arguments, function(elem) {
+                    elem.style.display = null;
+                });
+            }
+            // show(photo, sendBtn)
         },
         start() {
             const localVideo = document.querySelector('video')
             this.localStream
+            this.localVideo = localVideo
             this.remoteVideo = document.getElementById('remoteVideo')
 
             navigator.mediaDevices.getUserMedia({
@@ -81,6 +166,11 @@ export default {
             // this.callButton.disabled = false;
             trace('Ending call.');
         },
+        sendData() {
+            let data = 'hello world'
+            this.sendChannel.send(data)
+            trace('Sent Data: ' + data);
+        },
         call() {
             // trace('Starting call.');
             console.log('Starting call')
@@ -97,41 +187,38 @@ export default {
             }
 
             const servers = null;  // Allows for RTC server configuration.
-            let localPeerConnection = this.localPeerConnection
             // Create peer connections and add behavior.
-            localPeerConnection = new RTCPeerConnection(servers);
-            trace('Created local peer connection object localPeerConnection.');
-            
-            function getOtherPeer(peerConnection) {
-                return (peerConnection === localPeerConnection) ?
-                    remotePeerConnection : localPeerConnection;
+            // 本地连接
+            this.localPeerConnection = new RTCPeerConnection(servers, null)
+
+            // 发送数据 Channel
+            this.sendChannel = this.localPeerConnection.createDataChannel('sendDataChannel', null)
+            this.sendChannel.onopen = this.sendChannel.onclose = () => {
+                var readyState = this.sendChannel.readyState
+                trace('发送通道状态： ' + readyState);
+                if (readyState === 'open') {
+                    
+                } else {
+                    
+                }
             }
 
-            function getPeerName(peerConnection) {
-                return (peerConnection === localPeerConnection) ?
+
+            trace('Created local peer connection object localPeerConnection.');
+            
+            const getPeerName = (peerConnection) => {
+                return (peerConnection === this.localPeerConnection) ?
                     'localPeerConnection' : 'remotePeerConnection';
             }
 
             function setRemoteDescriptionSuccess(peerConnection) {
+                function setDescriptionSuccess(peerConnection, functionName) {
+                  const peerName = getPeerName(peerConnection);
+                  trace(`${peerName} ${functionName} complete.`);
+                }
                 setDescriptionSuccess(peerConnection, 'setRemoteDescription');
             }
 
-            
-
-function setDescriptionSuccess(peerConnection, functionName) {
-  const peerName = getPeerName(peerConnection);
-  trace(`${peerName} ${functionName} complete.`);
-}
-
-// Logs that the connection succeeded.
-function handleConnectionSuccess(peerConnection) {
-  trace(`${getPeerName(peerConnection)} addIceCandidate success.`);
-};
-
-            function handleConnectionFailure(peerConnection, error) {
-  trace(`${getPeerName(peerConnection)} failed to add ICE Candidate:\n`+
-        `${error.toString()}.`);
-}
 
             const handleConnection = event => {
                 const peerConnection = event.target;
@@ -139,13 +226,14 @@ function handleConnectionSuccess(peerConnection) {
 
                 if (iceCandidate) {
                     const newIceCandidate = new RTCIceCandidate(iceCandidate);
-                    const otherPeer = getOtherPeer(peerConnection);
+                    const otherPeer = (peerConnection === this.localPeerConnection) ? this.remotePeerConnection : this.localPeerConnection;
 
                     otherPeer.addIceCandidate(newIceCandidate)
                     .then(() => {
-                        handleConnectionSuccess(peerConnection);
+                        trace(`${getPeerName(peerConnection)} addIceCandidate success.`);
                     }).catch((error) => {
-                        handleConnectionFailure(peerConnection, error);
+                        trace(`${getPeerName(peerConnection)} failed to add ICE Candidate:\n`+
+                            `${error.toString()}.`);
                     });
 
                     trace(`${getPeerName(peerConnection)} ICE candidate:\n` +
@@ -167,65 +255,89 @@ function handleConnectionSuccess(peerConnection) {
                 trace('Remote peer connection received remote stream.');
             }
 
-            localPeerConnection.addEventListener('icecandidate', handleConnection);
-            localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
-            let remotePeerConnection = this.remotePeerConnection
-            remotePeerConnection = new RTCPeerConnection(servers);
-            trace('Created remote peer connection object remotePeerConnection.');
+            this.localPeerConnection.addEventListener('icecandidate', handleConnection);
+            this.localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange)
 
-            remotePeerConnection.addEventListener('icecandidate', handleConnection);
-            remotePeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
-            remotePeerConnection.addEventListener('addstream', gotRemoteMediaStream);
+            // 远程
+            this.remotePeerConnection = new RTCPeerConnection(servers)
+            this.remotePeerConnection.ondatachannel = event => {
+                console.log('收数据回调', event)
+                this.receiveChannel = event.channel
+                this.receiveChannel.onmessage = event => {
+                    console.log('收到', event.data)
+                }
+                const onReceiveChannelStateChange = () => {
+                    var readyState = this.receiveChannel.readyState;
+                    trace('Receive channel state is: ' + readyState);
+                }
+                this.receiveChannel.onopen = onReceiveChannelStateChange;
+                this.receiveChannel.onclose = onReceiveChannelStateChange;
+            }
+
+
+            this.remotePeerConnection.addEventListener('icecandidate', handleConnection);
+            this.remotePeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
+            this.remotePeerConnection.addEventListener('addstream', gotRemoteMediaStream);
 
             // Add local stream to connection and create offer to connect.
-            localPeerConnection.addStream(this.localStream);
+            this.localPeerConnection.addStream(this.localStream);
             trace('Added local stream to localPeerConnection.');
 
             trace('localPeerConnection createOffer start.');
 
-            function createdOffer(description) {
+            function setSessionDescriptionError(error) {
+                trace(`Failed to create session description: ${error.toString()}.`);
+            }
+
+            this.localPeerConnection.createOffer({
+                offerToReceiveVideo: 1,
+            })
+            .then((description) => {
+                // RTCSessionDescription
                 trace(`Offer from localPeerConnection:\n${description.sdp}`);
 
-                trace('localPeerConnection setLocalDescription start.');
-                localPeerConnection.setLocalDescription(description)
+                // 保存本地会话
+                this.localPeerConnection.setLocalDescription(description)
                     .then(() => {
-                    setLocalDescriptionSuccess(localPeerConnection);
-                    }).catch(setSessionDescriptionError);
+                        console.log('保存本地会话成功')
+                    }).catch(err => {
+                        console.log('保存本地会话失败')
+                    });
 
-                trace('remotePeerConnection setRemoteDescription start.');
-                remotePeerConnection.setRemoteDescription(description)
+                this.remotePeerConnection.setRemoteDescription(description)
                     .then(() => {
-                    setRemoteDescriptionSuccess(remotePeerConnection);
-                    }).catch(setSessionDescriptionError);
+                        console.log('远程 setRemoteDescription 成功')
+                    }).catch(err => {
+                        console.log('远程 setRemoteDescription 失败')
+                    })
 
                 trace('remotePeerConnection createAnswer start.')
-                remotePeerConnection.createAnswer()
+                this.remotePeerConnection.createAnswer()
                     .then(description => {
                         trace(`Answer from remotePeerConnection:\n${description.sdp}.`);
 
                         trace('remotePeerConnection setLocalDescription start.');
-                        remotePeerConnection.setLocalDescription(description)
+                        this.remotePeerConnection.setLocalDescription(description)
                             .then(() => {
-                            setLocalDescriptionSuccess(remotePeerConnection);
-                            }).catch(setSessionDescriptionError);
+                                console.log('保存远程会话成功')
+                            }).catch(err => {
+                                console.log('保存远程会话失败')
+                            })
 
                         trace('localPeerConnection setRemoteDescription start.');
-                        localPeerConnection.setRemoteDescription(description)
+                        this.localPeerConnection.setRemoteDescription(description)
                             .then(() => {
-                            setRemoteDescriptionSuccess(localPeerConnection);
-                            }).catch(setSessionDescriptionError);
+                                console.log('本地 setRemoteDescription 成功')
+                            }).catch(err => {
+                                console.log('本地 setRemoteDescription 失败')
+                            })
                     })
-                    .catch(setSessionDescriptionError);
-            }
-
-            function setSessionDescriptionError(error) {
-  trace(`Failed to create session description: ${error.toString()}.`);
-}
-
-            localPeerConnection.createOffer({
-                offerToReceiveVideo: 1,
+                    .catch(err => {
+                        console.log('createAnswer 失败')
+                    })
+            }).catch(err => {
+                console.error('createOffer 失败', err)
             })
-                .then(createdOffer).catch(setSessionDescriptionError);
         },
     }
 };
@@ -234,7 +346,10 @@ function handleConnectionSuccess(peerConnection) {
 
 <style lang="scss" scoped>
 @import "../scss/var";
-
+canvas {
+  max-width: 100%;
+  width: 320px;
+}
 video {
   max-width: 100%;
   width: 320px;
