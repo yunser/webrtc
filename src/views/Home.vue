@@ -113,24 +113,10 @@ export default {
             }
 
             function setRemoteDescriptionSuccess(peerConnection) {
-  setDescriptionSuccess(peerConnection, 'setRemoteDescription');
-}
+                setDescriptionSuccess(peerConnection, 'setRemoteDescription');
+            }
 
-function createdAnswer(description) {
-  trace(`Answer from remotePeerConnection:\n${description.sdp}.`);
-
-  trace('remotePeerConnection setLocalDescription start.');
-  remotePeerConnection.setLocalDescription(description)
-    .then(() => {
-      setLocalDescriptionSuccess(remotePeerConnection);
-    }).catch(setSessionDescriptionError);
-
-  trace('localPeerConnection setRemoteDescription start.');
-  localPeerConnection.setRemoteDescription(description)
-    .then(() => {
-      setRemoteDescriptionSuccess(localPeerConnection);
-    }).catch(setSessionDescriptionError);
-}
+            
 
 function setDescriptionSuccess(peerConnection, functionName) {
   const peerName = getPeerName(peerConnection);
@@ -212,9 +198,23 @@ function handleConnectionSuccess(peerConnection) {
                     setRemoteDescriptionSuccess(remotePeerConnection);
                     }).catch(setSessionDescriptionError);
 
-                trace('remotePeerConnection createAnswer start.');
+                trace('remotePeerConnection createAnswer start.')
                 remotePeerConnection.createAnswer()
-                    .then(createdAnswer)
+                    .then(description => {
+                        trace(`Answer from remotePeerConnection:\n${description.sdp}.`);
+
+                        trace('remotePeerConnection setLocalDescription start.');
+                        remotePeerConnection.setLocalDescription(description)
+                            .then(() => {
+                            setLocalDescriptionSuccess(remotePeerConnection);
+                            }).catch(setSessionDescriptionError);
+
+                        trace('localPeerConnection setRemoteDescription start.');
+                        localPeerConnection.setRemoteDescription(description)
+                            .then(() => {
+                            setRemoteDescriptionSuccess(localPeerConnection);
+                            }).catch(setSessionDescriptionError);
+                    })
                     .catch(setSessionDescriptionError);
             }
 
